@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Comments System</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: #f0f2f5;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .container {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 700px;
+      }
+      .form-card {
+        border-bottom: 2px solid #eee;
+        padding-bottom: 20px;
+        margin-bottom: 20px;
+      }
+      .form-group {
+        margin-bottom: 10px;
+      }
+      input,
+      textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        box-sizing: border-box;
+      }
+      button.submit-btn {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 10px;
+        border-radius: 5px;
+        cursor: pointer;
+        width: 100%;
+        font-weight: bold;
+      }
+      button.submit-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      #reply-status {
+        background: #fff3cd;
+        padding: 8px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+        font-size: 0.9em;
+        display: none;
+        border: 1px solid #ffeeba;
+      }
+      .comment-item {
+        margin-top: 15px;
+      }
+      .comment-content {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      }
+      .comment-header {
+        font-size: 0.85em;
+        color: #666;
+        margin-bottom: 8px;
+        border-bottom: 1px solid #f9f9f9;
+        padding-bottom: 5px;
+      }
+      .username {
+        font-weight: bold;
+        color: #333;
+        margin-right: 10px;
+      }
+      .comment-attachment {
+        margin-top: 10px;
+        padding: 8px;
+        background: #f8f9fa;
+        border-radius: 5px;
+        border: 1px solid #eee;
+        transition: background-color 0.5s ease;
+      }
+      .comment-attachment .file-link {
+        font-size: 0.85em;
+        color: #007bff;
+        text-decoration: none;
+        font-weight: bold;
+      }
+      .replies-list {
+        margin-left: 25px;
+        border-left: 2px solid #dee2e6;
+        padding-left: 15px;
+      }
+      .reply-link,
+      .delete-link {
+        font-size: 0.8em;
+        cursor: pointer;
+        margin-top: 10px;
+        display: inline-block;
+        margin-right: 15px;
+      }
+      .reply-link {
+        color: #007bff;
+      }
+      .delete-link {
+        color: #dc3545;
+        font-weight: bold;
+      }
+      .my-badge {
+        background: #e8f5e9;
+        color: #2e7d32;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.75em;
+        margin-left: 10px;
+      }
+      .captcha-box {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      #captcha-svg-container {
+        height: 50px;
+        background: #eee;
+        border-radius: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #captcha-svg-container svg {
+        height: 100%;
+        width: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="form-card">
+        <h3>Новый комментарий</h3>
+        <div id="reply-status">
+          Ответ пользователю: <strong id="reply-user"></strong>
+          <button onclick="cancelReply()" style="float: right; scale: 0.8">
+            Отмена
+          </button>
+        </div>
+        <form id="commentForm">
+          <input type="hidden" name="parentId" id="parentIdField" />
+          <div class="form-group">
+            <input type="text" name="username" placeholder="Имя" required />
+          </div>
+          <div class="form-group">
+            <input type="email" name="email" placeholder="Email" required />
+          </div>
+          <div class="form-group">
+            <input
+              type="url"
+              name="homepage"
+              placeholder="Домашняя страница (URL)"
+            />
+          </div>
+          <div class="form-group">
+            <input
+              type="text"
+              name="text"
+              placeholder="Ваше сообщение..."
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label style="font-size: 0.8em; color: #666"
+              >Прикрепить файл (JPG, PNG, GIF, TXT):</label
+            >
+            <input type="file" name="file" id="fileInput" />
+          </div>
+
+          <div class="captcha-box">
+            <div id="captcha-svg-container"></div>
+          </div>
+          <div class="form-group">
+            <input
+              type="text"
+              name="captchaValue"
+              placeholder="Введите символы с картинки"
+              required
+            />
+          </div>
+
+          <button type="submit" id="submitBtn" class="submit-btn">
+            ОТПРАВИТЬ
+          </button>
+        </form>
+      </div>
+      <div id="comments-root"></div>
+      <div
+        class="pagination-controls"
+        style="
+          display: flex;
+          gap: 15px;
+          margin-top: 20px;
+          justify-content: center;
+        "
+      >
+        <button
+          id="prevBtn"
+          class="submit-btn"
+          style="width: 120px; background: #6c757d"
+        >
+          ← Назад
+        </button>
+        <button
+          id="nextBtn"
+          class="submit-btn"
+          style="width: 120px; background: #6c757d"
+        >
+          Вперед →
+        </button>
+      </div>
+    </div>
+
+    <script>
+      const API_URL = 'http://localhost:3000';
+      const socket = io();
+
+      let firstVisibleId = null;
+      let lastVisibleId = null;
+      const PAGE_LIMIT = 25;
+      let isFirstPage = true;
+      let historyStack = [];
+      let currentCursor = null;
+      let currentCaptchaKey = null;
+
+      async function ensureToken() {
+        let token = localStorage.getItem('accessToken');
+        while (!token) {
+          try {
+            const res = await fetch(`/auth/session`, {
+              method: 'POST',
+            });
+            if (res.ok) {
+              const data = await res.json();
+              localStorage.setItem('accessToken', data.accessToken);
+              token = data.accessToken;
+            }
+          } catch (e) {
+            console.error('Сервер недоступен...');
+          }
+          if (!token) await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+        return token;
+      }
+
+      async function checkAndInitAuth() {
+        if (!localStorage.getItem('accessToken')) await ensureToken();
+      }
+
+      async function loadCaptcha() {
+        try {
+          const res = await fetch(`/auth/captcha`, {
+            method: 'POST',
+          });
+          console.log(res);
+
+          if (res.ok) {
+            const data = await res.json();
+            currentCaptchaKey = data.captchaKey;
+            document.getElementById('captcha-svg-container').innerHTML =
+              data.svg;
+            document.querySelector('input[name="captchaValue"]').value = '';
+          }
+        } catch (e) {
+          console.error('Ошибка загрузки капчи:', e);
+        }
+      }
+
+      async function loadComments(id = null, direction = 'next') {
+        try {
+          let url = `/comments?limit=${PAGE_LIMIT}`;
+          if (id) {
+            url += `&cursor=${id}&direction=${direction}`;
+            isFirstPage = false;
+          } else {
+            isFirstPage = true;
+            historyStack = [];
+            currentCursor = null;
+          }
+
+          const headers = {};
+          const token = localStorage.getItem('accessToken');
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+
+          const res = await fetch(url, { headers });
+          let data = await res.json();
+
+          if (data && data.length > 0) {
+            const root = document.getElementById('comments-root');
+            root.innerHTML = '';
+            data.sort((a, b) => b.id - a.id);
+            data.forEach((comment) =>
+              root.appendChild(createCommentNode(comment)),
+            );
+            firstVisibleId = data[0].id;
+            lastVisibleId = data[data.length - 1].id;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        } catch (err) {
+          console.error('Ошибка загрузки:', err);
+        }
+      }
+
+      async function deleteComment(id) {
+        if (!confirm('Удалить этот комментарий?')) return;
+        const token = await ensureToken();
+        try {
+          await fetch(`/comments/${id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        } catch (e) {
+          alert('Ошибка сервера');
+        }
+      }
+
+      function createCommentNode(comment) {
+        const div = document.createElement('div');
+        div.className = 'comment-item';
+        div.id = `comment-${comment.id}`;
+        const isMy = comment.itsMy === true;
+
+        let fileMarkup = '';
+        if (comment.file) {
+          const f = comment.file;
+          const fileName = f.originalName || f.originalname || 'файл';
+          fileMarkup = `<div class="comment-attachment" id="file-container-${f.id}" data-filename="${f.filename}" data-mimetype="${f.mimetype}" data-originalname="${fileName}">`;
+          if (f.isLoaded) {
+            const fileUrl = `/files/uploads/${f.filename}?mime=${encodeURIComponent(f.mimetype)}`;
+            fileMarkup += `<a href="${fileUrl}" class="file-link" target="_blank">📄 ${fileName}</a>`;
+          } else {
+            fileMarkup += `<span class="loader-text" style="color: #888; font-style: italic; font-size: 0.85em;">⏳ Файл загружается...</span>`;
+          }
+          fileMarkup += `</div>`;
+        }
+
+        div.innerHTML = `
+            <div class="comment-content">
+                <div class="comment-header">
+                    <span class="username">${comment.author?.username || comment.username}</span>
+                    <span>${new Date(comment.createdAt).toLocaleString()}</span>
+                    ${isMy ? '<span class="my-badge">Вы</span>' : ''}
+                </div>
+                <div class="text">${comment.text}</div>
+                ${fileMarkup}
+                <div class="comment-actions">
+                  <span class="reply-link" onclick="setupReply(${comment.id}, '${comment.author?.username || comment.username}')">Ответить</span>
+                  ${isMy ? `<span class="delete-link" onclick="deleteComment(${comment.id})">Удалить</span>` : ''}
+                </div>
+            </div>
+            <div class="replies-list" id="replies-${comment.id}"></div>
+        `;
+
+        if (comment.replies && comment.replies.length > 0) {
+          const container = div.querySelector(`#replies-${comment.id}`);
+          comment.replies.forEach((reply) =>
+            container.appendChild(createCommentNode(reply)),
+          );
+        }
+        return div;
+      }
+
+      function handleIncomingComment(comment) {
+        const existingNode = document.getElementById(`comment-${comment.id}`);
+        const newNode = createCommentNode(comment);
+
+        if (existingNode) {
+          existingNode.replaceWith(newNode);
+          return;
+        }
+
+        if (!comment.parentId && isFirstPage) {
+          const root = document.getElementById('comments-root');
+          root.prepend(newNode);
+          if (root.children.length > PAGE_LIMIT)
+            root.removeChild(root.lastElementChild);
+          firstVisibleId = comment.id;
+        } else if (comment.parentId) {
+          const parentList = document.getElementById(
+            `replies-${comment.parentId}`,
+          );
+          if (parentList) parentList.append(newNode);
+        }
+      }
+
+      socket.on('comment:created', (comment) => {
+        handleIncomingComment(comment);
+      });
+
+      socket.on('comment:deleted', (data) => {
+        if (data && data.isDestroyed) {
+          const el = document.getElementById(`comment-${data.id}`);
+          if (el) {
+            el.style.transition = 'all 0.3s ease';
+            el.style.opacity = '0';
+            el.style.transform = 'scale(0.95)';
+            setTimeout(() => {
+              el.remove();
+            }, 300);
+          }
+          return;
+        }
+        handleIncomingComment(data);
+      });
+
+      socket.on('comment:file_ready', (data) => {
+        const { fileId, isLoaded } = data;
+        if (isLoaded) {
+          const container = document.getElementById(`file-container-${fileId}`);
+          if (container) {
+            const filename = container.getAttribute('data-filename');
+            const mimetype = container.getAttribute('data-mimetype');
+            const originalName = container.getAttribute('data-originalname');
+            const fileUrl = `/files/uploads/${filename}?mime=${encodeURIComponent(mimetype)}`;
+            container.innerHTML = `<a href="${fileUrl}" class="file-link" target="_blank">📄 ${originalName}</a>`;
+            container.style.backgroundColor = '#d4edda';
+            setTimeout(() => {
+              container.style.backgroundColor = '#f8f9fa';
+            }, 1000);
+          }
+        }
+      });
+
+      document.getElementById('commentForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = true;
+
+        try {
+          const token = await ensureToken();
+          const formData = new FormData(e.target);
+
+          if (!formData.get('homepage')) {
+            formData.delete('homepage');
+          }
+
+          if (!formData.get('parentId')) formData.delete('parentId');
+
+          if (currentCaptchaKey) {
+            formData.append('captchaKey', currentCaptchaKey);
+          }
+
+          const userInputValue = formData.get('captchaValue');
+
+          const res = await fetch(`/comments/create`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'x-captcha-key': currentCaptchaKey,
+              'x-captcha-value': userInputValue,
+            },
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            handleIncomingComment(data);
+            e.target.reset();
+            cancelReply();
+          } else {
+            const errorMsg = Array.isArray(data.message)
+              ? data.message.join('\n')
+              : data.message || 'Ошибка при отправке';
+            alert('Внимание:\n' + errorMsg);
+          }
+        } catch (err) {
+          alert('Ошибка соединения с сервером');
+        } finally {
+          submitBtn.disabled = false;
+          await loadCaptcha();
+        }
+      };
+
+      document.getElementById('nextBtn').onclick = () => {
+        if (lastVisibleId) {
+          historyStack.push(currentCursor);
+          currentCursor = lastVisibleId;
+          loadComments(currentCursor, 'next');
+        }
+      };
+
+      document.getElementById('prevBtn').onclick = () => {
+        if (historyStack.length > 0) {
+          currentCursor = historyStack.pop();
+          loadComments(currentCursor);
+        } else if (!isFirstPage) {
+          loadComments();
+        }
+      };
+
+      function setupReply(id, name) {
+        document.getElementById('parentIdField').value = id;
+        document.getElementById('reply-user').textContent = name;
+        document.getElementById('reply-status').style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      function cancelReply() {
+        document.getElementById('parentIdField').value = '';
+        document.getElementById('reply-status').style.display = 'none';
+      }
+
+      async function initLoad() {
+        await checkAndInitAuth();
+        await loadComments();
+        await loadCaptcha();
+      }
+
+      initLoad();
+    </script>
+  </body>
+</html>
