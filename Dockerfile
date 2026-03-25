@@ -27,8 +27,6 @@ RUN ls -R ./dist
 
 # 3. Копируем остальное
 COPY --from=builder /app/client ./client
-COPY --from=builder /app/temp ./temp
-COPY --from=builder /app/uploads ./uploads
 
 RUN mkdir -p temp uploads
 
