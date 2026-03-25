@@ -13,6 +13,7 @@ https://github.com/user-attachments/assets/d91c4c29-571a-43d8-b456-e74380bcd674
 - **Framework:** NestJS (HTTP), TypeScript
 - **Database:** PostgreSQL (TypeORM)
 - **Real-time:** WebSockets (Socket.io)
+- **Cache:** Redis
 - **Task Queue:** BullMQ (Redis)
 
 ---
